@@ -48,6 +48,13 @@ dialog h2{margin:0 0 12px;font-size:17px}.f{display:flex;flex-direction:column;g
 .err{color:var(--bad)}input[type=number]{width:76px}
 .info{font-size:13px;color:var(--mut);margin:0 0 12px;padding-left:18px}
 @media(max-width:820px){.app{flex-direction:column}.side{width:auto;height:auto;position:static;flex-direction:row;flex-wrap:wrap;align-items:center}.foot{flex-direction:row;margin:0}.side nav{display:flex;flex-wrap:wrap}.gs{margin:0}main{padding:14px}}
+.zc{position:relative;background-color:#0b0b0b;border:1px solid var(--line);border-radius:6px;touch-action:none;user-select:none;background-image:linear-gradient(to right,rgba(255,255,255,.07) 1px,transparent 1px),linear-gradient(to bottom,rgba(255,255,255,.07) 1px,transparent 1px)}
+.zn{position:absolute;box-sizing:border-box;border:2px solid;border-radius:4px;cursor:move;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:11px;color:#fff;overflow:hidden;text-align:center}
+.zn b{font-size:12px}.zn .x{position:absolute;top:2px;right:2px;width:16px;height:16px;line-height:15px;text-align:center;border-radius:3px;background:rgba(0,0,0,.55);cursor:pointer;font-size:13px}
+.zn .rs{position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize;background:rgba(255,255,255,.6);border-radius:3px 0 0 0}
+.zrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 0;border-top:1px solid var(--line)}.zrow i{width:12px;height:12px;border-radius:3px;display:inline-block}
+.zgrid{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start}.zp{flex:1 1 300px;min-width:260px}
+.zmini{position:relative;width:96px;aspect-ratio:16/9;background:#111;border-radius:3px;overflow:hidden}.zmini.v{width:34px;aspect-ratio:9/16}.zmini i{position:absolute;border:1px solid rgba(255,255,255,.6);box-sizing:border-box}
 </style></head><body><div id="root"></div><dialog id="dlg"></dialog>
 <script>
 const $ = s => document.querySelector(s);
@@ -113,6 +120,7 @@ const ICON = {
   telas: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>',
   arquivos: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-8 8"/></svg>',
   listas: '<svg viewBox="0 0 24 24"><path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>',
+  zonas: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M14 3v18M14 12h7"/></svg>',
   relatorios: '<svg viewBox="0 0 24 24"><path d="M5 20V11M11 20V4M17 20v-6M3 20h18"/></svg>',
   status: '<svg viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>',
   conta: '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg>' };
@@ -138,7 +146,7 @@ function showLogin() {
 async function boot() {
   await load();
   $('#root').innerHTML = `<div class="app"><aside class="side"><div class="brand"><img src="/logo.png" alt=""><span>Guará Play</span></div><a class="gs" id="gs" href="#/status"></a>
-  <nav>${[['telas', 'Telas'], ['arquivos', 'Arquivos'], ['listas', 'Listas de Reprodução'], ['relatorios', 'Relatórios'], ['status', 'Status'], ['conta', 'Minha conta']].map(([k, n]) => `<a href="#/${k}" data-r="${k}">${ICON[k]}${n}</a>`).join('')}</nav>
+  <nav>${[['telas', 'Telas'], ['arquivos', 'Arquivos'], ['listas', 'Listas de Reprodução'], ['zonas', 'Zonas'], ['relatorios', 'Relatórios'], ['status', 'Status'], ['conta', 'Minha conta']].map(([k, n]) => `<a href="#/${k}" data-r="${k}">${ICON[k]}${n}</a>`).join('')}</nav>
   <div class="foot"><button id="tm"></button><button onclick="token='';localStorage.t='';showLogin()">Sair</button></div></aside><main id="page"></main></div>`;
   const tm = $('#tm'), lbl = () => tm.textContent = document.documentElement.dataset.theme === 'dark' ? 'Modo claro' : 'Modo escuro';
   tm.onclick = () => { const d = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = localStorage.theme = d; lbl(); }; lbl();
@@ -241,13 +249,13 @@ const pTelas = () => listPage('screens', 'Telas', `<button class="p" onclick="pa
 function pairScreen() {
   modal(`<h2>Vincular tela</h2><p class="mut" style="font-size:13px;margin-top:0">Abra <b>${location.origin}/player.html</b> no aparelho e digite o código de 6 dígitos que aparece nele.</p>
   <label class="f">Código da tela<input id="c" inputmode="numeric" maxlength="6" autofocus></label><label class="f">Nome<input id="n" placeholder="Ex.: Recepção"></label>
-  <label class="f">Lista de reprodução<select id="l">${plOpts('')}</select></label><label class="f">Rotação da tela<select id="r">${rotOpts(0)}</select></label>
+  <label class="f">Lista de reprodução<select id="l">${plOpts('')}</select></label><label class="f">Layout de zonas (substitui a lista)<select id="ly">${lyOpts('')}</select></label><label class="f">Rotação da tela<select id="r">${rotOpts(0)}</select></label>
   <div class="acts"><button onclick="closeM()">Cancelar</button><button class="p" onclick="doPair()">Vincular</button></div>`);
 }
-const doPair = guard(async () => { await send('screens', 'POST', { code: $('#c').value, name: $('#n').value, playlistId: $('#l').value, rotation: +$('#r').value }); closeM(); await load(); route(); });
+const doPair = guard(async () => { await send('screens', 'POST', { code: $('#c').value, name: $('#n').value, playlistId: $('#l').value, layoutId: $('#ly').value, rotation: +$('#r').value }); closeM(); await load(); route(); });
 function editScreen(id) {
   const s = S.screens.find(x => x.id === id);
-  modal(`<h2>Editar tela</h2><label class="f">Nome<input id="n" value="${esc(s.name)}"></label><label class="f">Lista de reprodução<select id="l">${plOpts(s.playlistId)}</select></label>
+  modal(`<h2>Editar tela</h2><label class="f">Nome<input id="n" value="${esc(s.name)}"></label><label class="f">Lista de reprodução<select id="l">${plOpts(s.playlistId)}</select></label><label class="f">Layout de zonas (substitui a lista)<select id="ly">${lyOpts(s.layoutId)}</select></label>
   <label class="f">Rotação da tela<select id="r">${rotOpts(s.rotation)}</select></label>
   <label class="f">Ajuste da mídia<select id="f">${FIT.map(([v, n]) => `<option value="${v}" ${(s.fit || 'contain') === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
   <label class="f" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="s" ${s.sound ? 'checked' : ''} style="width:auto">Som nos vídeos</label>${tagPicker('screens', s.tags)}
@@ -257,7 +265,7 @@ function editScreen(id) {
   <div class="acts"><button class="d l" onclick="delScreen('${id}')">Remover tela</button><button onclick="closeM()">Cancelar</button><button class="p" onclick="saveScreen('${id}')">Salvar</button></div>`);
 }
 const schedFromForm = () => { const days = [...document.querySelectorAll('.dd:checked')].map(x => +x.value); return $('#hs').checked && days.length ? { days, start: $('#h1').value || '08:00', end: $('#h2').value || '22:00' } : null; };
-const saveScreen = guard(async id => { await send('screens/' + id, 'PATCH', { name: $('#n').value, playlistId: $('#l').value, rotation: +$('#r').value, fit: $('#f').value, sound: $('#s').checked, tags: pickedTags(), schedule: schedFromForm() }); closeM(); await load(); renderTbl('screens'); });
+const saveScreen = guard(async id => { await send('screens/' + id, 'PATCH', { name: $('#n').value, playlistId: $('#l').value, layoutId: $('#ly').value, rotation: +$('#r').value, fit: $('#f').value, sound: $('#s').checked, tags: pickedTags(), schedule: schedFromForm() }); closeM(); await load(); renderTbl('screens'); });
 let capTimer = null;
 function capture(id) {
   const s = S.screens.find(x => x.id === id);
@@ -452,12 +460,89 @@ function relCsv() {
 }
 const pRel = () => relLoad();
 
+/* ---------- Zonas ---------- */
+const ZCOL = ['#ef4444', '#3b82f6', '#22c55e', '#a855f7', '#f59e0b', '#14b8a6', '#ec4899', '#84cc16', '#6366f1', '#f97316'];
+const Z4 = [[0, 0, .5, .5], [.5, 0, .5, .5], [0, .5, .5, .5], [.5, .5, .5, .5]], ZT3 = [[0, 0, 1, .1], [0, .1, 1, .78], [0, .88, 1, .12]];
+const ZTPL = { // modelos: [x, y, largura, altura] em fração da tela, para [horizontal, vertical]
+  full: ['Tela cheia', [[0, 0, 1, 1]], [[0, 0, 1, 1]]],
+  bar: ['Principal + faixa inferior', [[0, 0, 1, .88], [0, .88, 1, .12]], [[0, 0, 1, .9], [0, .9, 1, .1]]],
+  side: ['Principal + lateral', [[0, 0, .7, 1], [.7, 0, .3, 1]], [[0, 0, 1, .7], [0, .7, 1, .3]]],
+  sidebar: ['Principal + lateral + faixa', [[0, 0, .72, .88], [.72, 0, .28, .88], [0, .88, 1, .12]], [[0, 0, 1, .62], [0, .62, 1, .28], [0, .9, 1, .1]]],
+  grid: ['Grade 2 × 2', Z4, Z4], top: ['Topo + principal + rodapé', ZT3, ZT3] };
+let ZE = null, ZD = null; // layout em edição e arrasto em andamento
+const lyOpts = sel => '<option value="">Sem zonas (usa a lista acima)</option>' + (S.layouts || []).map(l => `<option value="${l.id}" ${l.id === sel ? 'selected' : ''}>${esc(l.name)}</option>`).join('');
+const zPct = (z, g) => `left:${z.x / g.cols * 100}%;top:${z.y / g.rows * 100}%;width:${z.w / g.cols * 100}%;height:${z.h / g.rows * 100}%`;
+function pZonas() {
+  const L = S.layouts || [], use = id => S.screens.filter(s => s.layoutId === id).length;
+  const mini = (g, v) => `<div class="zmini ${v ? 'v' : ''}">${g.zones.map((z, i) => `<i style="${zPct(z, g)};background:${ZCOL[i % ZCOL.length]}99"></i>`).join('')}</div>`;
+  $('#page').innerHTML = `<div class="card"><div class="ph"><h1>Zonas</h1><button class="p" onclick="location.hash='#/zonas/novo'">+ Novo layout</button></div>
+  <p class="mut" style="margin-top:0">Divida a tela em áreas independentes, cada uma tocando a sua própria lista. Depois escolha o layout na configuração da tela.</p>
+  ${L.length ? `<div class="tw"><table><thead><tr><th>Prévia</th><th>Nome</th><th>Zonas (horiz. / vert.)</th><th>Telas usando</th><th></th></tr></thead><tbody>${L.map(l => `<tr><td><div style="display:flex;gap:8px;align-items:flex-end">${mini(l.h)}${mini(l.v, 1)}</div></td><td>${esc(l.name)}</td><td>${l.h.zones.length} / ${l.v.zones.length}</td><td>${use(l.id)}</td>
+    <td style="text-align:right;white-space:nowrap"><button onclick="location.hash='#/zonas/${l.id}'">Editar</button> <button onclick="zDup('${l.id}')">Duplicar</button> <button class="d" onclick="zRemove('${l.id}')">Remover</button></td></tr>`).join('')}</tbody></table></div>` : '<p class="mut">Nenhum layout ainda. Clique em "Novo layout".</p>'}</div>`;
+}
+const zDup = guard(async id => { const l = S.layouts.find(x => x.id === id); await send('layouts', 'POST', { ...l, id: undefined, name: l.name + ' (cópia)' }); await load(); pZonas(); });
+const zRemove = guard(async id => { const l = S.layouts.find(x => x.id === id); if (!confirm(`Remover o layout "${l.name}"? As telas que o usam voltam a tocar a lista.`)) return; await send('layouts/' + id, 'DELETE'); await load(); pZonas(); });
+function zApply(o, key, quiet) { // aplica um modelo, mantendo lista/giro/ajuste das zonas que já existiam (pela ordem)
+  const g = ZE[o], t = ZTPL[key][o === 'h' ? 1 : 2], old = g.zones;
+  g.zones = t.map(([fx, fy, fw, fh], i) => { const x = Math.round(fx * g.cols), y = Math.round(fy * g.rows), x2 = Math.round((fx + fw) * g.cols), y2 = Math.round((fy + fh) * g.rows);
+    return { ...(old[i] ? { id: old[i].id, playlistId: old[i].playlistId, rot: old[i].rot, fit: old[i].fit } : { playlistId: null, rot: 0, fit: '' }), x, y, w: Math.max(1, x2 - x), h: Math.max(1, y2 - y) }; });
+  if (!quiet) zDraw();
+}
+function zEditor(id) {
+  if (id === 'novo') { ZE = { id: '', name: 'Novo layout', h: { cols: 24, rows: 24, zones: [] }, v: { cols: 24, rows: 24, zones: [] } }; zApply('h', 'bar', 1); zApply('v', 'bar', 1); return zDraw(); }
+  const l = (S.layouts || []).find(x => x.id === id); if (!l) { location.hash = '#/zonas'; return; }
+  ZE = JSON.parse(JSON.stringify(l)); zDraw();
+}
+const zHtml = (o, i) => { const g = ZE[o], z = g.zones[i], c = ZCOL[i % ZCOL.length];
+  return `<div class="zn" data-o="${o}" data-i="${i}" style="${zPct(z, g)};border-color:${c};background:${c}55"><b>Zona ${i + 1}</b><span class="lb">${Math.round(z.w / g.cols * 100)}% × ${Math.round(z.h / g.rows * 100)}%</span><span class="x" data-act="del">×</span><span class="rs" data-act="rs"></span></div>`; };
+function zDraw() {
+  const pane = o => { const g = ZE[o], H = o === 'h';
+    return `<div class="zp"><div class="tb" style="margin-bottom:8px"><b>${H ? 'Horizontal' : 'Vertical'}</b>
+      <label>Grade <input type="number" min="4" max="48" value="${g.cols}" style="width:58px" onchange="zGrid('${o}','cols',this.value)"> × <input type="number" min="4" max="48" value="${g.rows}" style="width:58px" onchange="zGrid('${o}','rows',this.value)"></label>
+      <select onchange="if(this.value)zApply('${o}',this.value)"><option value="">Modelos…</option>${Object.entries(ZTPL).map(([k, t]) => `<option value="${k}">${t[0]}</option>`).join('')}</select><button onclick="zAdd('${o}')">+ Zona</button></div>
+      <div class="zc" data-o="${o}" onpointerdown="zDown(event)" onpointermove="zMove(event)" onpointerup="zUp(event)" onpointercancel="zUp(event)" style="width:${H ? 'min(100%,560px)' : 'min(100%,230px)'};aspect-ratio:${H ? '16/9' : '9/16'};background-size:${100 / g.cols}% ${100 / g.rows}%">${g.zones.map((_, i) => zHtml(o, i)).join('')}</div>
+      <div style="margin-top:8px">${g.zones.map((z, i) => `<div class="zrow"><i style="background:${ZCOL[i % ZCOL.length]}"></i><b>Zona ${i + 1}</b>
+        <select onchange="zSet('${o}',${i},'playlistId',this.value)">${plOpts(z.playlistId)}</select>
+        <select title="Girar o conteúdo desta zona" onchange="zSet('${o}',${i},'rot',this.value)">${rotOpts(z.rot)}</select>
+        <select title="Ajuste da mídia" onchange="zSet('${o}',${i},'fit',this.value)"><option value="">Ajuste da tela</option>${FIT.map(([v, n]) => `<option value="${v}" ${z.fit === v ? 'selected' : ''}>${n}</option>`).join('')}</select>
+        <button class="d" onclick="zDel('${o}',${i})">Remover</button></div>`).join('') || '<p class="mut">Sem zonas: esta orientação ficará preta. Use um modelo ou "+ Zona".</p>'}</div></div>`; };
+  $('#page').innerHTML = `<div class="card"><div class="ph"><h1>Editor de zonas</h1><button onclick="location.hash='#/zonas'">Voltar</button><button class="p" onclick="zSave()">Salvar</button></div>
+  <label class="f">Nome do layout<input id="zn" value="${esc(ZE.name)}" onchange="ZE.name=this.value"></label>
+  <p class="mut" style="font-size:13px">Arraste para mover e puxe o canto para redimensionar. Cada orientação tem o seu desenho: a tela usa o horizontal ou o vertical conforme a rotação dela. A lista de cada zona toca de forma independente; só a maior zona toca o som dos vídeos.</p>
+  <div class="zgrid">${pane('h')}${pane('v')}</div></div>`;
+}
+const zSet = (o, i, k, v) => { ZE[o].zones[i][k] = k === 'rot' ? +v : v; };
+function zAdd(o) { const g = ZE[o]; if (g.zones.length >= 20) return toast('Máximo de 20 zonas'); const w = Math.max(1, Math.round(g.cols / 3)), h = Math.max(1, Math.round(g.rows / 3)), n = g.zones.length % 4;
+  g.zones.push({ x: Math.min(g.cols - w, Math.floor((g.cols - w) / 2) + n), y: Math.min(g.rows - h, Math.floor((g.rows - h) / 2) + n), w, h, playlistId: null, rot: 0, fit: '' }); zDraw(); }
+const zDel = (o, i) => { ZE[o].zones.splice(i, 1); zDraw(); };
+function zGrid(o, k, v) { const g = ZE[o], n = Math.min(48, Math.max(4, parseInt(v) || g[k])), f = n / g[k], a = k === 'cols' ? ['x', 'w'] : ['y', 'h'];
+  g.zones.forEach(z => { z[a[0]] = Math.min(n - 1, Math.round(z[a[0]] * f)); z[a[1]] = Math.max(1, Math.min(n - z[a[0]], Math.round(z[a[1]] * f))); }); g[k] = n; zDraw(); }
+function zDown(e) {
+  const zn = e.target.closest('.zn'); if (!zn) return; const o = zn.dataset.o, i = +zn.dataset.i, act = e.target.dataset.act;
+  if (act === 'del') return zDel(o, i);
+  const g = ZE[o], r = zn.parentElement.getBoundingClientRect();
+  ZD = { o, i, mode: act === 'rs' ? 'rs' : 'mv', x: e.clientX, y: e.clientY, cw: r.width / g.cols, ch: r.height / g.rows, z0: { ...g.zones[i] } };
+  zn.setPointerCapture(e.pointerId); e.preventDefault();
+}
+function zMove(e) {
+  if (!ZD) return; const g = ZE[ZD.o], z = g.zones[ZD.i], z0 = ZD.z0, dx = Math.round((e.clientX - ZD.x) / ZD.cw), dy = Math.round((e.clientY - ZD.y) / ZD.ch), cl = (v, a, b) => Math.max(a, Math.min(b, v));
+  if (ZD.mode === 'mv') { z.x = cl(z0.x + dx, 0, g.cols - z.w); z.y = cl(z0.y + dy, 0, g.rows - z.h); } else { z.w = cl(z0.w + dx, 1, g.cols - z.x); z.h = cl(z0.h + dy, 1, g.rows - z.y); }
+  const el = document.querySelector(`.zn[data-o="${ZD.o}"][data-i="${ZD.i}"]`); if (!el) return;
+  el.style.left = z.x / g.cols * 100 + '%'; el.style.top = z.y / g.rows * 100 + '%'; el.style.width = z.w / g.cols * 100 + '%'; el.style.height = z.h / g.rows * 100 + '%';
+  el.querySelector('.lb').textContent = `${Math.round(z.w / g.cols * 100)}% × ${Math.round(z.h / g.rows * 100)}%`;
+}
+const zUp = () => { ZD = null; };
+const zSave = guard(async () => {
+  ZE.name = $('#zn').value.trim() || 'Layout sem nome'; const r = await send('layouts', 'POST', ZE); await load(); toast('Layout salvo');
+  if (!ZE.id) location.hash = '#/zonas/' + r.id; else { ZE = JSON.parse(JSON.stringify(S.layouts.find(l => l.id === ZE.id) || ZE)); zDraw(); }
+});
+
 /* ---------- rotas ---------- */
 function route() {
   const [r = 'telas', id] = location.hash.replace(/^#\//, '').split('/');
   document.querySelectorAll('.side nav a').forEach(a => a.classList.toggle('on', a.dataset.r === r));
   sideStatus(); if (r !== 'listas' || !id) ed = null;
-  ({ telas: pTelas, arquivos: pArquivos, listas: () => id ? pEditor(id) : pListas(), relatorios: pRel, status: pStatus, conta: pConta }[r] || pTelas)();
+  ({ telas: pTelas, arquivos: pArquivos, listas: () => id ? pEditor(id) : pListas(), zonas: () => id ? zEditor(id) : pZonas(), relatorios: pRel, status: pStatus, conta: pConta }[r] || pTelas)();
 }
 addEventListener('hashchange', () => $('#page') && route());
 setInterval(async () => { if (!token || dlg.open || !$('#page')) return; try { await load(); } catch { return; } sideStatus();

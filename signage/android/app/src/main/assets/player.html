@@ -10,6 +10,7 @@ html,body{margin:0;height:100%;background:#000;color:#fff;font-family:system-ui,
 #stage img,#stage video{width:100%;height:100%;object-fit:var(--fit,contain)}
 .big{font-size:min(18vw,18vh);font-weight:700;letter-spacing:.08em;font-variant-numeric:tabular-nums}
 .sub{font-size:min(4vw,4vh);opacity:.7;margin-top:1vh}
+.z{position:absolute;overflow:hidden}.zi{position:absolute;display:flex;align-items:center;justify-content:center;text-align:center;overflow:hidden}
 </style></head><body>
 <div id="stage"></div>
 <script>
@@ -51,6 +52,7 @@ async function poll() {
 }
 function apply() {
   if (!man || man.connecting) {
+    cur = ''; run++; stop();
     const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     return msg('Conectando…', man && man.error ? 'Sem conexão com ' + esc(man.server || '') + '<br>' + esc(man.error) : 'Aguardando o servidor');
   }
@@ -63,15 +65,36 @@ function apply() {
   if (man.version === cur) return;
   cur = man.version; run++; stop();
   document.body.dataset.rot = man.rotation || 0; document.body.style.setProperty('--fit', man.fit || 'contain');
-  prefetch(man.items); loop(run);
+  prefetch(man.zones ? man.zones.flatMap(z => z.items) : man.items); build(run);
 }
 
-async function loop(id) {
-  if (!man.items.length) return msg('Playlist vazia', 'Adicione conteúdo no painel');
+// Cada zona tem a sua própria lista, tocando de forma independente. Sem zonas, é uma zona única em tela cheia.
+let zs = [];
+stop = () => zs.forEach(z => z.stop());
+function build(id) {
+  const zones = man.zones || [{ x: 0, y: 0, w: 100, h: 100, rot: 0, fit: '', items: man.items, full: true }];
+  const big = zones.reduce((b, d, i) => d.w * d.h > zones[b].w * zones[b].h ? i : b, 0); // só a maior zona toca som
+  stage.replaceChildren(); zs = [];
+  zones.forEach((zd, i) => {
+    const host = document.createElement('div'), el = document.createElement('div'); host.className = 'z'; el.className = 'zi';
+    host.style.cssText = `left:${zd.x}%;top:${zd.y}%;width:${zd.w}%;height:${zd.h}%`; if (zd.fit) host.style.setProperty('--fit', zd.fit);
+    host.appendChild(el); stage.appendChild(host); zs.push({ stop: () => {}, el, host, zd, audio: i === big });
+  });
+  zs.forEach(z => { // rotação própria da zona, medida depois de entrar na tela
+    const W = z.host.clientWidth, H = z.host.clientHeight, r = z.zd.rot || 0, st = z.el.style;
+    if (r === 90) st.cssText = `left:${W}px;top:0;width:${H}px;height:${W}px;transform-origin:0 0;transform:rotate(90deg)`;
+    else if (r === 270) st.cssText = `left:0;top:${H}px;width:${H}px;height:${W}px;transform-origin:0 0;transform:rotate(-90deg)`;
+    else { st.cssText = 'left:0;top:0;width:100%;height:100%'; if (r === 180) st.transform = 'rotate(180deg)'; }
+    loop(z, id);
+  });
+}
+async function loop(z, id) {
+  const items = z.zd.items;
+  if (!items.length) { if (z.zd.full) msg('Playlist vazia', 'Adicione conteúdo no painel'); return; }
   let i = 0;
   while (id === run) {
-    const it = man.items[i++ % man.items.length];
-    try { await play(it); } catch { await wait(1500); }
+    const it = items[i++ % items.length];
+    try { await play(it, z); } catch { await wait(1500); }
   }
 }
 // ---- relatório de exibição: soma, por hora (UTC) e conteúdo, quanto tempo cada coisa ficou na tela ----
@@ -94,19 +117,20 @@ async function flushLog() { // envia o acumulado; se estiver sem internet, guard
   } catch {}
 }
 setInterval(flushLog, 60000);
-async function play(it) {
+async function play(it, z) {
   let t0 = 0; // só conta a partir do momento em que o conteúdo realmente apareceu
-  const cancel = new Promise(r => stop = r);
+  const cancel = new Promise(r => z.stop = r);
   const work = (async () => {
     if (it.type === 'clock') {
-      const tick = () => { const d = new Date(); stage.innerHTML = `<div><div class="big">${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div><div class="sub">${d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</div></div>`; };
+      const tick = () => { const d = new Date(), fs = Math.min((z.el.clientWidth || innerWidth) * 0.2, (z.el.clientHeight || innerHeight) * 0.3);
+        z.el.innerHTML = `<div><div class="big" style="font-size:${fs}px">${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div><div class="sub" style="font-size:${fs * 0.22}px">${d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</div></div>`; };
       tick(); t0 = Date.now(); const t = setInterval(tick, 1000); try { await Promise.race([wait(it.seconds * 1000), cancel]); } finally { clearInterval(t); } return;
     }
     const url = NATIVE ? it.url : URL.createObjectURL(await fetchBlob(it.url)); // no app: toca direto do arquivo, sem carregar na memória
     try {
-      if (it.type === 'image') { stage.innerHTML = `<img src="${url}">`; t0 = Date.now(); await wait(it.seconds * 1000); }
-      else await new Promise((ok, no) => { const v = document.createElement('video'); v.src = url; v.muted = !man.sound; v.autoplay = v.playsInline = true;
-        v.onplaying = () => { if (!t0) t0 = Date.now(); }; v.onended = ok; v.onerror = no; stage.replaceChildren(v); v.play().catch(() => { v.muted = true; v.play().catch(no); }); });
+      if (it.type === 'image') { z.el.innerHTML = `<img src="${url}">`; t0 = Date.now(); await wait(it.seconds * 1000); }
+      else await new Promise((ok, no) => { const v = document.createElement('video'); v.src = url; v.muted = !(man.sound && z.audio); v.autoplay = v.playsInline = true;
+        v.onplaying = () => { if (!t0) t0 = Date.now(); }; v.onended = ok; v.onerror = no; z.el.replaceChildren(v); v.play().catch(() => { v.muted = true; v.play().catch(no); }); });
     } finally { if (!NATIVE) URL.revokeObjectURL(url); }
   })();
   try { await Promise.race([work, cancel]); } finally { if (t0) rec(it, Date.now() - t0); }
@@ -120,16 +144,21 @@ async function doCapture() {
     const vert = (+man.rotation || 0) % 180 !== 0, W0 = vert ? innerHeight : innerWidth, H0 = vert ? innerWidth : innerHeight, k = Math.min(1, 640 / W0);
     const W = Math.round(W0 * k), H = Math.round(H0 * k), c = document.createElement('canvas'); c.width = W; c.height = H;
     const g = c.getContext('2d'); g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
-    const el = stage.querySelector('img,video');
-    if (el) {
-      const sw = el.videoWidth || el.naturalWidth, sh = el.videoHeight || el.naturalHeight;
-      if (sw && sh) { const fit = man.fit || 'contain'; let dw = W, dh = H, dx = 0, dy = 0;
-        if (fit !== 'fill') { const f = fit === 'cover' ? Math.max(W / sw, H / sh) : Math.min(W / sw, H / sh); dw = sw * f; dh = sh * f; dx = (W - dw) / 2; dy = (H - dh) / 2; }
-        g.drawImage(el, dx, dy, dw, dh); }
-    } else { // relógio ou mensagem
-      g.fillStyle = '#fff'; g.textAlign = 'center';
-      g.font = `700 ${H * 0.18}px sans-serif`; g.fillText(stage.querySelector('.big')?.textContent || '', W / 2, H / 2);
-      g.font = `${H * 0.05}px sans-serif`; g.fillText(stage.querySelector('.sub')?.textContent || '', W / 2, H / 2 + H * 0.1);
+    const zl = stage.querySelector('.z') ? zs : [{ el: stage, zd: { x: 0, y: 0, w: 100, h: 100, fit: '' } }];
+    for (const z of zl) { // desenha cada zona no seu retângulo (a rotação própria da zona não é considerada na captura)
+      const X = W * z.zd.x / 100, Y = H * z.zd.y / 100, ZW = W * z.zd.w / 100, ZH = H * z.zd.h / 100, el = z.el.querySelector('img,video');
+      g.save(); g.beginPath(); g.rect(X, Y, ZW, ZH); g.clip();
+      if (el) {
+        const sw = el.videoWidth || el.naturalWidth, sh = el.videoHeight || el.naturalHeight;
+        if (sw && sh) { const fit = z.zd.fit || man.fit || 'contain'; let dw = ZW, dh = ZH, dx = X, dy = Y;
+          if (fit !== 'fill') { const f = fit === 'cover' ? Math.max(ZW / sw, ZH / sh) : Math.min(ZW / sw, ZH / sh); dw = sw * f; dh = sh * f; dx = X + (ZW - dw) / 2; dy = Y + (ZH - dh) / 2; }
+          g.drawImage(el, dx, dy, dw, dh); }
+      } else { // relógio ou mensagem
+        const fs = Math.min(ZW * 0.2, ZH * 0.3); g.fillStyle = '#fff'; g.textAlign = 'center';
+        g.font = `700 ${fs}px sans-serif`; g.fillText(z.el.querySelector('.big')?.textContent || '', X + ZW / 2, Y + ZH / 2);
+        g.font = `${fs * 0.22}px sans-serif`; g.fillText(z.el.querySelector('.sub')?.textContent || '', X + ZW / 2, Y + ZH / 2 + fs * 0.4);
+      }
+      g.restore();
     }
     const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.7));
     await fetch('/api/player/capture?device=' + dev, { method: 'POST', body: blob });

@@ -44,9 +44,14 @@ class Syncer(private val ctx: Context) : Runnable {
     }
 
     private fun urlsOf(m: JSONObject): List<String> {
-        val a = m.optJSONArray("items") ?: return emptyList()
         val r = ArrayList<String>()
-        for (i in 0 until a.length()) { val u = a.getJSONObject(i).optString("url"); if (u.startsWith("/media/")) r.add(u) }
+        fun scan(a: JSONArray?) {
+            if (a == null) return
+            for (i in 0 until a.length()) { val u = a.getJSONObject(i).optString("url"); if (u.startsWith("/media/")) r.add(u) }
+        }
+        scan(m.optJSONArray("items"))
+        val z = m.optJSONArray("zones") // telas com zonas: cada zona tem a sua lista de itens
+        if (z != null) for (i in 0 until z.length()) scan(z.getJSONObject(i).optJSONArray("items"))
         return r.distinct()
     }
 

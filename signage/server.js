@@ -14,6 +14,7 @@ fs.mkdirSync(MEDIA, { recursive: true }); fs.mkdirSync(CAPT, { recursive: true }
 const wantCap = {}; // device -> instante em que o painel pediu uma captura
 
 let db = fs.existsSync(DB) ? JSON.parse(fs.readFileSync(DB, 'utf8')) : { media: [], playlists: [], screens: [], devices: {} };
+db.layouts ||= []; // layouts de zonas
 db.tags ||= [];
 const save = () => fs.writeFileSync(DB, JSON.stringify(db));
 const seen = {}; // device -> último contato (em memória)
@@ -36,6 +37,13 @@ const tokens = new Set();
 const fails = {}; // ip -> { n, t }: bloqueia quem erra a senha muitas vezes
 const ipOf = req => String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
 const vt = (arr, scope) => (Array.isArray(arr) ? arr : []).filter(id => db.tags.some(t => t.id === id && t.scope === scope));
+// grade de um layout: cols x rows, zonas em unidades da grade (x, y, w, h) e a playlist de cada uma
+const vg = g => { const cols = Math.min(48, Math.max(4, parseInt(g?.cols) || 24)), rows = Math.min(48, Math.max(4, parseInt(g?.rows) || 24));
+  const zones = (Array.isArray(g?.zones) ? g.zones : []).slice(0, 20).map(z => {
+    const x = Math.min(cols - 1, Math.max(0, parseInt(z.x) || 0)), y = Math.min(rows - 1, Math.max(0, parseInt(z.y) || 0));
+    return { id: /^\w{1,20}$/.test(z.id || '') ? z.id : rid(), x, y, w: Math.min(cols - x, Math.max(1, parseInt(z.w) || 1)), h: Math.min(rows - y, Math.max(1, parseInt(z.h) || 1)),
+      playlistId: z.playlistId || null, rot: [0, 90, 180, 270].includes(+z.rot) ? +z.rot : 0, fit: ['contain', 'cover', 'fill'].includes(z.fit) ? z.fit : '' }; });
+  return { cols, rows, zones }; };
 const clean = b => { const o = {};
   if ('rotation' in b) o.rotation = [0, 90, 180, 270].includes(+b.rotation) ? +b.rotation : 0;
   if ('fit' in b) o.fit = ['contain', 'cover', 'fill'].includes(b.fit) ? b.fit : 'contain';
@@ -83,13 +91,18 @@ function manifest(dev, plat) {
   { const now = Date.now(), prev = lastPoll[dev]; lastPoll[dev] = now; st.snames[s.id] = s.name; // horas "online": soma o intervalo entre contatos (máx. 30s cada)
     if (prev) { const g = Math.min((now - prev) / 1000, 30); if (g > 0) { bucket(dayOf(now), s.id).online += g; sdirty = true; } } }
   if (['Android', 'Windows', 'Apple', 'Outro'].includes(plat) && s.platform !== plat) { s.platform = plat; save(); }
-  const pl = db.playlists.find(p => p.id === s.playlistId);
-  const items = (pl?.items || []).map(i => {
+  const mapItems = pl => (pl?.items || []).map(i => {
     if (i.kind === 'clock') return { id: 'clock', type: 'clock', seconds: i.seconds };
     const m = db.media.find(x => x.id === i.mediaId);
     return m && { id: m.id, type: m.type, url: '/media/' + m.file, seconds: i.seconds };
   }).filter(Boolean);
-  const man = { paired: true, name: s.name, rotation: s.rotation || 0, fit: s.fit || 'contain', sound: !!s.sound, items };
+  const man = { paired: true, name: s.name, rotation: s.rotation || 0, fit: s.fit || 'contain', sound: !!s.sound, items: mapItems(db.playlists.find(p => p.id === s.playlistId)) };
+  const lay = s.layoutId && db.layouts.find(l => l.id === s.layoutId);
+  if (lay) { // tela com zonas: usa o desenho da orientação da tela, em porcentagem
+    const g = (s.rotation || 0) % 180 ? lay.v : lay.h, pc = n => Math.round(n * 10000) / 100;
+    man.items = [];
+    man.zones = g.zones.map(z => ({ x: pc(z.x / g.cols), y: pc(z.y / g.rows), w: pc(z.w / g.cols), h: pc(z.h / g.rows), rot: z.rot, fit: z.fit, items: mapItems(db.playlists.find(p => p.id === z.playlistId)) }));
+  }
   man.version = crypto.createHash('sha1').update(JSON.stringify(man)).digest('hex').slice(0, 12);
   if (wantCap[dev] && Date.now() - wantCap[dev] < 60000) man.capture = true; // fora do hash: não reinicia a lista
   return man;
@@ -156,7 +169,7 @@ http.createServer(async (req, res) => {
         return json(res, 200, { tz: TZ, today: dayOf(Date.now()), days, names, screens });
       }
       if (p === '/api/state') {
-        return json(res, 200, { now: Date.now(), tags: db.tags, media: db.media, playlists: db.playlists,
+        return json(res, 200, { now: Date.now(), tags: db.tags, media: db.media, playlists: db.playlists, layouts: db.layouts,
           screens: db.screens.map(s => ({ ...s, seen: seen[s.device] || 0 })) });
       }
       if (p === '/api/tags' && m === 'POST') {
@@ -211,6 +224,16 @@ http.createServer(async (req, res) => {
       }
       if ((r = p.match(/^\/api\/playlists\/(\w+)$/)) && m === 'DELETE') {
         db.playlists = db.playlists.filter(x => x.id !== r[1]); db.screens.forEach(s => { if (s.playlistId === r[1]) s.playlistId = null; });
+        db.layouts.forEach(l => [l.h, l.v].forEach(g => g.zones.forEach(z => { if (z.playlistId === r[1]) z.playlistId = null; })));
+        save(); return json(res, 200, {});
+      }
+      if (p === '/api/layouts' && m === 'POST') {
+        const b = await readBody(req), k = db.layouts.findIndex(x => x.id === b.id);
+        const l = { id: k < 0 ? rid() : b.id, name: String(b.name || 'Layout sem nome').slice(0, 80), h: vg(b.h), v: vg(b.v), created: k < 0 ? Date.now() : db.layouts[k].created };
+        k < 0 ? db.layouts.push(l) : (db.layouts[k] = l); save(); return json(res, 200, l);
+      }
+      if ((r = p.match(/^\/api\/layouts\/(\w+)$/)) && m === 'DELETE') {
+        db.layouts = db.layouts.filter(x => x.id !== r[1]); db.screens.forEach(s => { if (s.layoutId === r[1]) s.layoutId = null; });
         save(); return json(res, 200, {});
       }
       if (p === '/api/screens' && m === 'POST') {
@@ -218,7 +241,7 @@ http.createServer(async (req, res) => {
         const dev = Object.keys(db.devices).find(k => db.devices[k].code === String(b.code).trim());
         if (!dev) return json(res, 404, { error: 'Código não encontrado. Confira o código exibido na tela.' });
         if (db.screens.some(s => s.device === dev)) return json(res, 409, { error: 'Esta tela já está pareada.' });
-        db.screens.push({ id: rid(), device: dev, name: String(b.name || 'Nova tela').slice(0, 80), playlistId: b.playlistId || null, rotation: 0, fit: 'contain', sound: false, created: Date.now(), ...clean(b) });
+        db.screens.push({ id: rid(), device: dev, name: String(b.name || 'Nova tela').slice(0, 80), playlistId: b.playlistId || null, layoutId: db.layouts.some(l => l.id === b.layoutId) ? b.layoutId : null, rotation: 0, fit: 'contain', sound: false, created: Date.now(), ...clean(b) });
         save(); return json(res, 200, {});
       }
       if ((r = p.match(/^\/api\/screens\/(\w+)\/capture$/)) && m === 'POST') {
@@ -228,7 +251,7 @@ http.createServer(async (req, res) => {
       if ((r = p.match(/^\/api\/captures\/(\w+)$/)) && m === 'GET') return serve(req, res, path.join(CAPT, r[1] + '.jpg'));
       if ((r = p.match(/^\/api\/screens\/(\w+)$/))) {
         const s = db.screens.find(x => x.id === r[1]); if (!s) return json(res, 404, { error: 'Tela não encontrada' });
-        if (m === 'PATCH') { const b = await readBody(req); if ('playlistId' in b) s.playlistId = b.playlistId || null; if (b.name) s.name = String(b.name).slice(0, 80); Object.assign(s, clean(b)); }
+        if (m === 'PATCH') { const b = await readBody(req); if ('playlistId' in b) s.playlistId = b.playlistId || null; if ('layoutId' in b) s.layoutId = db.layouts.some(l => l.id === b.layoutId) ? b.layoutId : null; if (b.name) s.name = String(b.name).slice(0, 80); Object.assign(s, clean(b)); }
         if (m === 'DELETE') { fs.rmSync(path.join(CAPT, s.id + '.jpg'), { force: true }); db.screens = db.screens.filter(x => x !== s); delete db.devices[s.device]; }
         save(); return json(res, 200, {});
       }
